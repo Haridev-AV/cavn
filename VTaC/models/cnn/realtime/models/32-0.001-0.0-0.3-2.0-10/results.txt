@@ -1,0 +1,120 @@
+C:\Users\harid\projects\cavn\VTaC\models\cnn\realtime\train.py
+{'framework': 'textcnn', 'differ_loss_weight': 0.0, 'weighted_class': 2.0, 'learning_rate': 0.001, 'adam_weight_decay': 0.005, 'batch_size': 32, 'max_epoch': 10, 'data_length': 2500}
+Training samples: 4060, Validation: 495, Test: 482
+Positive samples - Train: 1163.0, Val: 141.0, Test: 137.0
+CNNClassifier(
+  (convs): ModuleList(
+    (0): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(25,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(25,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+    (1): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(50,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(50,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+    (2): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(100,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(100,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+    (3): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(150,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(150,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+  )
+  (signal_feature): Sequential(
+    (0): Linear(in_features=256, out_features=128, bias=True)
+    (1): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU()
+  )
+  (rule_based_label): Sequential(
+    (0): Linear(in_features=1, out_features=64, bias=True)
+    (1): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU()
+  )
+  (classifier): Sequential(
+    (0): Dropout(p=0.3, inplace=False)
+    (1): Linear(in_features=128, out_features=1, bias=True)
+  )
+)
+Num of Parameters: 1.449473M
+Large gradient norm (24.55) at batch 1, but proceeding...
+Large gradient norm (26.05) at batch 2, but proceeding...
+Large gradient norm (13.53) at batch 3, but proceeding...
+Large gradient norm (11.36) at batch 4, but proceeding...
+Large gradient norm (11.24) at batch 6, but proceeding...
+Large gradient norm (11.45) at batch 7, but proceeding...
+Large gradient norm (13.28) at batch 11, but proceeding...
+Large gradient norm (10.69) at batch 82, but proceeding...
+--------------------
+textcnn Epoch 1
+total_loss: 0.69426 train_loss: 0.69426 differ_loss: 0.0 eval_loss: 0.61908
+TPR: 60.284 TNR: 92.373 Score: 57.302 Acc: 83.232
+PPV: 0.759 AUC: 0.877 F1: 0.672
+--------------------
+textcnn Epoch 2
+total_loss: 0.63396 train_loss: 0.63396 differ_loss: 0.0 eval_loss: 0.51596
+TPR: 74.468 TNR: 91.808 Score: 67.293 Acc: 86.869
+PPV: 0.784 AUC: 0.918 F1: 0.764
+--------------------
+textcnn Epoch 3
+total_loss: 0.59818 train_loss: 0.59818 differ_loss: 0.0 eval_loss: 0.60162
+TPR: 51.773 TNR: 96.61 Score: 54.107 Acc: 83.838
+PPV: 0.859 AUC: 0.907 F1: 0.646
+--------------------
+textcnn Epoch 4
+total_loss: 0.56566 train_loss: 0.56566 differ_loss: 0.0 eval_loss: 0.69536
+TPR: 34.043 TNR: 98.87 Score: 45.905 Acc: 80.404
+PPV: 0.923 AUC: 0.898 F1: 0.497
+--------------------
+textcnn Epoch 5
+total_loss: 0.56674 train_loss: 0.56674 differ_loss: 0.0 eval_loss: 0.58941
+TPR: 55.319 TNR: 97.175 Score: 56.493 Acc: 85.253
+PPV: 0.886 AUC: 0.906 F1: 0.681
+--------------------
+textcnn Epoch 6
+total_loss: 0.54632 train_loss: 0.54632 differ_loss: 0.0 eval_loss: 0.56253
+TPR: 53.901 TNR: 96.045 Score: 55.099 Acc: 84.04
+PPV: 0.844 AUC: 0.924 F1: 0.658
+--------------------
+textcnn Epoch 7
+total_loss: 0.53157 train_loss: 0.53157 differ_loss: 0.0 eval_loss: 0.61431
+TPR: 41.135 TNR: 98.023 Score: 48.972 Acc: 81.818
+PPV: 0.892 AUC: 0.923 F1: 0.563
+--------------------
+textcnn Epoch 8
+total_loss: 0.53076 train_loss: 0.53076 differ_loss: 0.0 eval_loss: 0.55217
+TPR: 61.702 TNR: 95.763 Score: 59.916 Acc: 86.061
+PPV: 0.853 AUC: 0.921 F1: 0.716
+--------------------
+textcnn Epoch 9
+total_loss: 0.52893 train_loss: 0.52893 differ_loss: 0.0 eval_loss: 0.51924
+TPR: 73.05 TNR: 93.503 Score: 67.079 Acc: 87.677
+PPV: 0.817 AUC: 0.924 F1: 0.772
+--------------------
+textcnn Epoch 10
+total_loss: 0.532 train_loss: 0.532 differ_loss: 0.0 eval_loss: 0.53901
+TPR: 67.376 TNR: 94.35 Score: 63.181 Acc: 86.667
+PPV: 0.826 AUC: 0.923 F1: 0.742
+final_test
+TPR: 54.745 TNR: 95.072 Score: 55.205 Acc: 16.241
+PPV: 0.815 AUC: 0.923 F1: 0.655 SEN: 0.547 SPEC: 0.951

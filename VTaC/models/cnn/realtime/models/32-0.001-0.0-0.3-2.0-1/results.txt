@@ -1,0 +1,74 @@
+C:\Users\harid\projects\cavn\VTaC\models\cnn\realtime\train.py
+{'framework': 'textcnn', 'differ_loss_weight': 0.0, 'weighted_class': 2.0, 'learning_rate': 0.001, 'adam_weight_decay': 0.005, 'batch_size': 32, 'max_epoch': 1, 'data_length': 2500}
+Training samples: 4060, Validation: 495, Test: 482
+Positive samples - Train: 1163.0, Val: 141.0, Test: 137.0
+CNNClassifier(
+  (convs): ModuleList(
+    (0): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(25,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(25,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+    (1): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(50,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(50,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+    (2): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(100,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(100,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+    (3): Sequential(
+      (0): Dropout(p=0.15, inplace=False)
+      (1): Conv1d(4, 64, kernel_size=(150,), stride=(5,), padding=(1,))
+      (2): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (3): ReLU()
+      (4): Conv1d(64, 64, kernel_size=(150,), stride=(5,), padding=(1,))
+      (5): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (6): AdaptiveMaxPool1d(output_size=1)
+    )
+  )
+  (signal_feature): Sequential(
+    (0): Linear(in_features=256, out_features=128, bias=True)
+    (1): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU()
+  )
+  (rule_based_label): Sequential(
+    (0): Linear(in_features=1, out_features=64, bias=True)
+    (1): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU()
+  )
+  (classifier): Sequential(
+    (0): Dropout(p=0.3, inplace=False)
+    (1): Linear(in_features=128, out_features=1, bias=True)
+  )
+)
+Num of Parameters: 1.449473M
+Large gradient norm (19.73) at batch 1, but proceeding...
+Large gradient norm (19.56) at batch 2, but proceeding...
+Large gradient norm (13.49) at batch 3, but proceeding...
+Large gradient norm (12.09) at batch 6, but proceeding...
+Large gradient norm (11.57) at batch 7, but proceeding...
+Large gradient norm (10.12) at batch 8, but proceeding...
+Large gradient norm (10.97) at batch 11, but proceeding...
+--------------------
+textcnn Epoch 1
+total_loss: 0.68765 train_loss: 0.68765 differ_loss: 0.0 eval_loss: 0.72052
+TPR: 32.624 TNR: 98.87 Score: 45.257 Acc: 80.0
+PPV: 0.92 AUC: 0.883 F1: 0.482
+final_test
+TPR: 28.467 TNR: 99.71 Score: 43.822 Acc: 8.805
+PPV: 0.975 AUC: 0.874 F1: 0.441 SEN: 0.285 SPEC: 0.997
