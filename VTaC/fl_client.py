@@ -175,7 +175,7 @@ class VTaCClient(fl.client.NumPyClient):
         return val_metrics["loss"], len(self.val_loader.dataset), val_metrics
 
     def evaluate_metrics(self, loader, subset=False):
-        """Unified metric calculation for train/val"""
+        """Unified metric calculation for train/val with threshold optimization"""
         total_loss = 0.0
         all_preds = []
         all_targets = []
@@ -202,30 +202,48 @@ class VTaCClient(fl.client.NumPyClient):
                 all_targets.extend(targets.cpu().numpy())
                 batches += 1
         
-        # Metrics Logic
+        # Convert to numpy arrays
+        all_preds = np.array(all_preds)
+        all_targets = np.array(all_targets)
+        
+        # Calculate AUC
         try:
             auc = roc_auc_score(all_targets, all_preds)
         except:
             auc = 0.5
+        
+        # Threshold Search: scan from 0.1 to 0.9 with step 0.05
+        best_score = -np.inf
+        best_metrics = None
+        
+        thresholds = np.arange(0.1, 0.95, 0.05)  # 0.1, 0.15, 0.2, ..., 0.9
+        
+        for thresh in thresholds:
+            preds_bin = (all_preds >= thresh).astype(int)
             
-        preds_bin = np.array(all_preds) >= 0.3
-        targs = np.array(all_targets)
-        
-        TP = ((preds_bin == 1) & (targs == 1)).sum()
-        TN = ((preds_bin == 0) & (targs == 0)).sum()
-        FP = ((preds_bin == 1) & (targs == 0)).sum()
-        FN = ((preds_bin == 0) & (targs == 1)).sum()
-        
-        TPR = TP / (TP + FN) if (TP+FN) > 0 else 0
-        TNR = TN / (TN + FP) if (TN+FP) > 0 else 0
-        Score = 100 * (TP+TN) / (TP+TN+FP+5*FN) if (TP+TN+FP+5*FN) > 0 else 0
+            TP = ((preds_bin == 1) & (all_targets == 1)).sum()
+            TN = ((preds_bin == 0) & (all_targets == 0)).sum()
+            FP = ((preds_bin == 1) & (all_targets == 0)).sum()
+            FN = ((preds_bin == 0) & (all_targets == 1)).sum()
+            
+            TPR = TP / (TP + FN) if (TP + FN) > 0 else 0
+            TNR = TN / (TN + FP) if (TN + FP) > 0 else 0
+            Score = 100 * (TP + TN) / (TP + TN + FP + 5 * FN) if (TP + TN + FP + 5 * FN) > 0 else 0
+            
+            if Score > best_score:
+                best_score = Score
+                best_metrics = {
+                    "TPR": TPR * 100,
+                    "TNR": TNR * 100,
+                    "Score": Score
+                }
         
         return {
             "loss": total_loss / batches if batches > 0 else 0,
             "AUC": auc,
-            "TPR": TPR * 100,
-            "TNR": TNR * 100,
-            "Score": Score
+            "TPR": best_metrics["TPR"],
+            "TNR": best_metrics["TNR"],
+            "Score": best_metrics["Score"]
         }
 
     # Helper methods for Flower
@@ -243,7 +261,7 @@ def create_client(hospital_id, data_dir, model_type="cnn"):
         "batch_size": 32,
         "learning_rate": 0.001, 
         "adam_weight_decay": 0.0001,
-        "weighted_class": 2.0, # Conservative start to prevent collapse
+        "weighted_class": 10.0, # Changed from 2.0 to 10.0 for higher sensitivity
         "dropout": 0.3,
         "local_epochs": 1,
         "seed": 42 + hospital_id
