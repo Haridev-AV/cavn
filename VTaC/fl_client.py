@@ -1,6 +1,3 @@
-"""
-Federated Learning Client for VTaC CNN Model
-"""
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,303 +6,246 @@ import numpy as np
 import os
 import flwr as fl
 from sklearn.metrics import roc_auc_score
+from scipy.stats import kurtosis, skew
 
-# Import the model and utilities
+# Import Models
 from models.cnn.realtime.nets import CNNClassifier
-from models.cnn.realtime.tools import Dataset_train, train_model, eval_model, evaluation
+from models.hybrid.realtime.nets import HybridCAVN
 
+# Conditionally import tools based on model type
+def get_model_tools(model_type):
+    if model_type.lower() == "hybrid":
+        from models.hybrid.realtime.tools import Dataset_train, train_model, eval_model
+    else:  # default to cnn
+        from models.cnn.realtime.tools import Dataset_train, train_model, eval_model
+    return Dataset_train, train_model, eval_model
+
+# Import tools will be done dynamically in __init__ 
 
 class VTaCClient(fl.client.NumPyClient):
-    def __init__(self, hospital_id, data_dir, params):
+    def __init__(self, hospital_id, data_dir, params, model_type="cnn"):
         self.hospital_id = hospital_id
         self.data_dir = data_dir
         self.params = params
-
-        # Set device
+        self.model_type = model_type.lower()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Set seeds for reproducibility
+        # Dynamically import tools based on model type
+        self.Dataset_train, self.train_model, self.eval_model = get_model_tools(self.model_type)
+
+        # Reproducibility
         torch.manual_seed(params["seed"])
         np.random.seed(params["seed"])
 
-        # Load data
         self.load_data()
+        self.initialize_model()
 
-        # Create model
-        self.model = CNNClassifier(
+    def initialize_model(self):
+        """Clean initialization logic"""
+        # 1. Base CNN
+        base_cnn = CNNClassifier(
             inputs=self.num_channels,
-            dropout=params["dropout"]
+            dropout=self.params["dropout"]
         ).to(self.device)
 
-        # Create optimizer and loss
+        if self.model_type == "hybrid":
+            print(f"Hospital {self.hospital_id}: Initializing HybridCAVN")
+            # Wrap the CNN in the Hybrid architecture
+            self.model = HybridCAVN(base_cnn, num_context_features=4).to(self.device)
+        else:
+            print(f"Hospital {self.hospital_id}: Initializing Baseline CNN")
+            self.model = base_cnn
+
+        # Optimizer
         self.optimizer = optim.Adam(
             self.model.parameters(),
-            lr=params["learning_rate"],
-            weight_decay=params["adam_weight_decay"]
+            lr=self.params["learning_rate"],
+            weight_decay=self.params["adam_weight_decay"]
         )
-        self.loss_ce = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor([params["weighted_class"]]).to(self.device)
+        
+        # Loss Function (BCEWithLogitsLoss includes Sigmoid)
+        self.criterion = nn.BCEWithLogitsLoss(
+            pos_weight=torch.tensor([self.params["weighted_class"]]).to(self.device)
         )
 
     def load_data(self):
-        """Load hospital-specific data"""
+        # ... (Keep your existing data loading logic exactly as is) ...
+        # Ensure drop_last=True for train_loader
         train_x, train_y, _ = torch.load(os.path.join(self.data_dir, "train.pt"))
         val_x, val_y, _ = torch.load(os.path.join(self.data_dir, "val.pt"))
-        test_x, test_y, _ = torch.load(os.path.join(self.data_dir, "test.pt"))
-
-        # Apply data preprocessing (same as original)
+        
+        # Basic Preprocessing
         zero_nans = lambda x: torch.nan_to_num(x, 0)
-        clip_value = 10.0
-
-        train_x = zero_nans(train_x)
-        val_x = zero_nans(val_x)
-        test_x = zero_nans(test_x)
-
-        train_x = torch.clamp(train_x, -clip_value, clip_value)
-        val_x = torch.clamp(val_x, -clip_value, clip_value)
-        test_x = torch.clamp(test_x, -clip_value, clip_value)
+        train_x = torch.clamp(zero_nans(train_x), -10, 10)
+        val_x = torch.clamp(zero_nans(val_x), -10, 10)
 
         self.num_channels = train_x.shape[1]
-
-        # Create datasets
-        self.train_dataset = Dataset_train(train_x, train_y)
-        self.val_dataset = Dataset_train(val_x, val_y)
-        self.test_dataset = Dataset_train(test_x, test_y)
-
-        # Create data loaders
         self.train_loader = DataLoader(
-            self.train_dataset,
-            batch_size=self.params["batch_size"],
-            shuffle=True,
-            num_workers=0,
-            drop_last=True
+            self.Dataset_train(train_x, train_y), 
+            batch_size=self.params["batch_size"], shuffle=True, drop_last=True
         )
         self.val_loader = DataLoader(
-            self.val_dataset,
-            batch_size=self.params["batch_size"],
-            shuffle=False,
-            num_workers=0
-        )
-        self.test_loader = DataLoader(
-            self.test_dataset,
-            batch_size=self.params["batch_size"],
-            shuffle=False,
-            num_workers=0
+            self.Dataset_train(val_x, val_y), 
+            batch_size=self.params["batch_size"], shuffle=False
         )
 
+    def get_context_features(self, x_batch):
+        """Extract statistical features on CPU"""
+        x_np = x_batch.cpu().numpy()
+        features = []
+        for i in range(x_np.shape[0]):
+            ecg = x_np[i, 0, :]
+            # Safety check for constant signals (prevents NaN in kurtosis/skew)
+            if np.std(ecg) < 1e-6:
+                features.append([0, 0, 0, 0])
+                continue
+                
+            k = kurtosis(ecg, fisher=True, bias=False)
+            s = skew(ecg, bias=False)
+            # Simple zero crossing rate
+            zcr = ((ecg[:-1] * ecg[1:]) < 0).sum()
+            # Placeholder for HR diff or other features
+            hr = 0.0 
+            features.append([k, s, zcr, hr])
+            
+        return torch.tensor(features, dtype=torch.float32).to(self.device)
+
+    def forward_pass(self, batch):
+        """Handles data routing for both CNN and Hybrid modes"""
+        inputs, targets = batch
+        inputs, targets = inputs.to(self.device), targets.to(self.device)
+
+        if self.model_type == "hybrid":
+            context = self.get_context_features(inputs)
+            outputs = self.model(inputs, context)
+        else:
+            outputs = self.model(inputs)
+            
+        return outputs, targets
+
+    def fit(self, parameters, config):
+        self.set_parameters(parameters)
+        self.model.train()
+        
+        epoch_loss = 0.0
+        batches = 0
+        
+        for epoch in range(self.params["local_epochs"]):
+            for batch in self.train_loader:
+                self.optimizer.zero_grad()
+                
+                # Use the proper training pipeline from tools.py
+                loss, _, _, _ = self.train_model(
+                    batch, 
+                    self.model, 
+                    self.criterion, 
+                    self.device, 
+                    weight=self.params.get("differ_loss_weight", 0.0)
+                )
+                
+                # Ensure gradient calculation with tiny epsilon
+                loss = loss + 1e-6
+                
+                # Backward pass
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                self.optimizer.step()
+                
+                epoch_loss += loss.item()
+                batches += 1
+
+        avg_loss = epoch_loss / batches if batches > 0 else 0.0
+        
+        # Calculate training metrics
+        train_metrics = self.evaluate_metrics(self.train_loader, subset=True)
+        print(f"Hospital {self.hospital_id} Train: Loss {avg_loss:.4f}, AUC {train_metrics['AUC']:.4f}")
+        
+        return self.get_parameters({}), len(self.train_loader.dataset), {
+            "loss": avg_loss, 
+            "AUC": train_metrics["AUC"]
+        }
+
+    def evaluate(self, parameters, config):
+        self.set_parameters(parameters)
+        self.model.eval()
+        
+        val_metrics = self.evaluate_metrics(self.val_loader)
+        print(f"Hospital {self.hospital_id} Eval: AUC {val_metrics['AUC']:.4f}, Score {val_metrics['Score']:.2f}")
+        
+        return val_metrics["loss"], len(self.val_loader.dataset), val_metrics
+
+    def evaluate_metrics(self, loader, subset=False):
+        """Unified metric calculation for train/val"""
+        total_loss = 0.0
+        all_preds = []
+        all_targets = []
+        batches = 0
+        
+        # If subset is True, only check first 50 batches to save time
+        limit = 50 if subset else float('inf')
+
+        with torch.no_grad():
+            for i, batch in enumerate(loader):
+                if i >= limit: break
+                
+                # Use the proper evaluation pipeline from tools.py
+                loss, predictions, targets = self.eval_model(
+                    batch, 
+                    self.model, 
+                    self.criterion, 
+                    self.device
+                )
+                
+                total_loss += loss.item()
+                # predictions are already sigmoid-applied in eval_model
+                all_preds.extend(torch.sigmoid(predictions).cpu().numpy())
+                all_targets.extend(targets.cpu().numpy())
+                batches += 1
+        
+        # Metrics Logic
+        try:
+            auc = roc_auc_score(all_targets, all_preds)
+        except:
+            auc = 0.5
+            
+        preds_bin = np.array(all_preds) >= 0.3
+        targs = np.array(all_targets)
+        
+        TP = ((preds_bin == 1) & (targs == 1)).sum()
+        TN = ((preds_bin == 0) & (targs == 0)).sum()
+        FP = ((preds_bin == 1) & (targs == 0)).sum()
+        FN = ((preds_bin == 0) & (targs == 1)).sum()
+        
+        TPR = TP / (TP + FN) if (TP+FN) > 0 else 0
+        TNR = TN / (TN + FP) if (TN+FP) > 0 else 0
+        Score = 100 * (TP+TN) / (TP+TN+FP+5*FN) if (TP+TN+FP+5*FN) > 0 else 0
+        
+        return {
+            "loss": total_loss / batches if batches > 0 else 0,
+            "AUC": auc,
+            "TPR": TPR * 100,
+            "TNR": TNR * 100,
+            "Score": Score
+        }
+
+    # Helper methods for Flower
     def get_parameters(self, config):
-        """Return model parameters as a list of NumPy arrays"""
         return [val.cpu().detach().numpy() for val in self.model.parameters()]
 
     def set_parameters(self, parameters):
-        """Set model parameters from a list of NumPy arrays"""
         params_dict = zip(self.model.parameters(), parameters)
         with torch.no_grad():
             for param, param_np in params_dict:
                 param.copy_(torch.from_numpy(param_np))
 
-    def fit(self, parameters, config):
-        """Train the model on local data"""
-        # Set model parameters
-        self.set_parameters(parameters)
-
-        # Training loop
-        self.model.train()
-        total_loss = 0.0
-        num_batches = 0
-
-        for epoch in range(self.params["local_epochs"]):
-            epoch_loss = 0.0
-            epoch_batches = 0
-
-            for batch in self.train_loader:
-                loss, differ_loss, _, _ = train_model(
-                    batch,
-                    self.model,
-                    self.loss_ce,
-                    self.device,
-                    weight=self.params["differ_loss_weight"]
-                )
-
-                # Skip if NaN/Inf
-                if torch.isnan(loss) or torch.isinf(loss):
-                    continue
-
-                combined_loss = loss + differ_loss
-
-                if torch.isnan(combined_loss) or torch.isinf(combined_loss):
-                    continue
-
-                # Backward pass
-                self.optimizer.zero_grad()
-                combined_loss.backward()
-
-                # Gradient clipping
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
-
-                # Handle NaN gradients
-                has_nan_grad = False
-                for param in self.model.parameters():
-                    if param.grad is not None:
-                        if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
-                            param.grad = torch.where(
-                                torch.isnan(param.grad) | torch.isinf(param.grad),
-                                torch.zeros_like(param.grad),
-                                param.grad
-                            )
-                            has_nan_grad = True
-
-                if not has_nan_grad:
-                    self.optimizer.step()
-
-                epoch_loss += combined_loss.item()
-                epoch_batches += 1
-
-            if epoch_batches > 0:
-                avg_epoch_loss = epoch_loss / epoch_batches
-                print(f"Hospital {self.hospital_id} - Epoch {epoch+1}/{self.params['local_epochs']}: Loss = {avg_epoch_loss:.4f}")
-
-        # Return updated parameters, number of training samples, and metrics
-        num_samples = len(self.train_dataset)
-
-        # Calculate training metrics on a subset of training data for global tracking
-        train_metrics = self.calculate_training_metrics()
-
-        metrics = {
-            "loss": avg_epoch_loss if epoch_batches > 0 else 0.0,
-            "TPR": train_metrics["TPR"],
-            "AUC": train_metrics["AUC"]
-        }
-
-        return self.get_parameters({}), num_samples, metrics
-
-    def evaluate(self, parameters, config):
-        """Evaluate the model on local validation data"""
-        # Set model parameters
-        self.set_parameters(parameters)
-
-        self.model.eval()
-        total_loss = 0.0
-        num_batches = 0
-
-        # For metrics calculation
-        all_predictions = []
-        all_targets = []
-
-        with torch.no_grad():
-            for batch in self.val_loader:
-                loss, predictions, targets = eval_model(
-                    batch,
-                    self.model,
-                    self.loss_ce,
-                    self.device
-                )
-
-                if not (torch.isnan(loss) or torch.isinf(loss)):
-                    total_loss += loss.item()
-                    num_batches += 1
-
-                # Collect predictions and targets for metrics
-                all_predictions.extend(torch.sigmoid(predictions).cpu().numpy())
-                all_targets.extend(targets.cpu().numpy())
-
-        # Calculate metrics
-        avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
-
-        # Calculate TPR, TNR, etc.
-        predictions_binary = np.array(all_predictions) >= 0.5
-        targets = np.array(all_targets)
-
-        TP = np.sum((predictions_binary == 1) & (targets == 1))
-        FP = np.sum((predictions_binary == 1) & (targets == 0))
-        TN = np.sum((predictions_binary == 0) & (targets == 0))
-        FN = np.sum((predictions_binary == 0) & (targets == 1))
-
-        TPR = TP / (TP + FN) if (TP + FN) > 0 else 0.0
-        TNR = TN / (TN + FP) if (TN + FP) > 0 else 0.0
-        PPV = TP / (TP + FP) if (TP + FP) > 0 else 0.0
-        ACC = (TP + TN) / (TP + TN + FP + FN) if (TP + TN + FP + FN) > 0 else 0.0
-
-        # Calculate AUC
-        try:
-            auc = roc_auc_score(targets, all_predictions)
-        except:
-            auc = 0.5
-
-        # Calculate Score (from original paper)
-        score = 100 * (TP + TN) / (TP + TN + FP + 5 * FN) if (TP + TN + FP + 5 * FN) > 0 else 0.0
-
-        metrics = {
-            "loss": avg_loss,
-            "TPR": TPR * 100,
-            "TNR": TNR * 100,
-            "PPV": PPV * 100,
-            "AUC": auc,
-            "Score": score,
-            "ACC": ACC * 100
-        }
-
-        num_samples = len(self.val_dataset)
-
-        print(f"Hospital {self.hospital_id} - Eval Loss: {avg_loss:.4f}, AUC: {auc:.4f}, Score: {score:.2f}")
-
-        return avg_loss, num_samples, metrics
-
-    def calculate_training_metrics(self):
-        """Calculate TPR and AUC on a subset of training data for global tracking"""
-        self.model.eval()
-
-        # Use a small subset of training data for metrics calculation
-        subset_size = min(1000, len(self.train_dataset))  # Use up to 1000 samples
-        indices = torch.randperm(len(self.train_dataset))[:subset_size]
-        subset_dataset = torch.utils.data.Subset(self.train_dataset, indices)
-        subset_loader = DataLoader(subset_dataset, batch_size=self.params["batch_size"], shuffle=False)
-
-        all_predictions = []
-        all_targets = []
-
-        with torch.no_grad():
-            for batch in subset_loader:
-                _, predictions, targets = eval_model(
-                    batch,
-                    self.model,
-                    self.loss_ce,
-                    self.device
-                )
-                all_predictions.extend(torch.sigmoid(predictions).cpu().numpy())
-                all_targets.extend(targets.cpu().numpy())
-
-        # Calculate TPR and AUC
-        predictions_binary = np.array(all_predictions) >= 0.5
-        targets = np.array(all_targets)
-
-        TP = np.sum((predictions_binary == 1) & (targets == 1))
-        FN = np.sum((predictions_binary == 0) & (targets == 1))
-
-        TPR = TP / (TP + FN) if (TP + FN) > 0 else 0.0
-
-        try:
-            auc = roc_auc_score(targets, all_predictions)
-        except:
-            auc = 0.5
-
-        return {
-            "TPR": TPR * 100,
-            "AUC": auc
-        }
-
-
-def create_client(hospital_id, data_dir):
-    """Factory function to create a client for a specific hospital"""
+def create_client(hospital_id, data_dir, model_type="cnn"):
     params = {
         "batch_size": 32,
-        "learning_rate": 0.001,
-        "differ_loss_weight": 0.2,  # Further increase contrastive learning for better TPR
-        "adam_weight_decay": 0.005,
-        "weighted_class": 6.0,  # Higher weight to further penalize missed alarms
+        "learning_rate": 0.001, 
+        "adam_weight_decay": 0.0001,
+        "weighted_class": 2.0, # Conservative start to prevent collapse
         "dropout": 0.3,
-        "local_epochs": 1,  # One epoch per round
-        "seed": 42 + hospital_id  # Different seed per hospital
+        "local_epochs": 1,
+        "seed": 42 + hospital_id
     }
-
-    return VTaCClient(hospital_id, data_dir, params)
+    return VTaCClient(hospital_id, data_dir, params, model_type)

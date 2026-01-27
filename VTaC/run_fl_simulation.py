@@ -7,6 +7,7 @@ import sys
 import os
 import time
 import threading
+import argparse
 
 
 def run_server():
@@ -16,20 +17,33 @@ def run_server():
     return subprocess.Popen(cmd, cwd=os.getcwd())
 
 
-def run_client(hospital_id):
+def run_client(hospital_id, mode):
     """Run a client for a specific hospital"""
-    print(f"Starting Client for Hospital {hospital_id}...")
-    cmd = [sys.executable, "run_client.py", str(hospital_id)]
+    print(f"Starting Client for Hospital {hospital_id} (Mode: {mode})...")
+    cmd = [sys.executable, "run_client.py", str(hospital_id), "--mode", mode]
     return subprocess.Popen(cmd, cwd=os.getcwd())
 
 
 def main():
     """Main simulation function"""
+    parser = argparse.ArgumentParser(description="VTaC Federated Learning Simulation")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["cnn", "hybrid"],
+        default="cnn",
+        help="Model type to use for federated learning (default: cnn)"
+    )
+    args = parser.parse_args()
+    
+    mode = args.mode.upper()  # Convert to uppercase for display
+    
     print("=" * 80)
     print("VTaC Federated Learning Simulation")
     print("=" * 80)
     print("This will simulate 3 hospitals participating in federated learning")
     print("Each hospital trains on its local data and shares model updates")
+    print(f"Model Mode: {mode}")
     print("=" * 80)
 
     # Check if data exists
@@ -49,7 +63,7 @@ def main():
     # Start clients
     client_processes = []
     for i in range(1, 4):
-        client_process = run_client(i)
+        client_process = run_client(i, args.mode)  # Pass the original lowercase mode
         client_processes.append(client_process)
         time.sleep(1)  # Stagger client starts
 
@@ -66,6 +80,7 @@ def main():
     print("Federated Learning Simulation Complete!")
     print("=" * 80)
     print("The global model has been trained across all hospitals.")
+    print(f"Model Mode Tested: {mode}")
     print("Check the server output for final aggregated metrics.")
     print("=" * 80)
 

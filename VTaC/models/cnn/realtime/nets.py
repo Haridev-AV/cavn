@@ -74,21 +74,30 @@ class CNNClassifier(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, signal, random_s=None):
-        signal = [conv(signal) for conv in self.convs]
-        signal = torch.cat(signal, dim=1)
-        signal = signal.view(-1, signal.size(1))
+        # Apply parallel convolutions with different kernel sizes
+        conv_outputs = []
+        for conv in self.convs:
+            conv_out = conv(signal)  # Each conv block outputs [batch, feature_size, 1]
+            conv_outputs.append(conv_out)
+
+        # Concatenate along feature dimension: [batch, feature_size * num_convs, 1]
+        signal = torch.cat(conv_outputs, dim=1)
+
+        # Flatten to [batch, feature_size * num_convs] for fully connected layers
+        signal = signal.view(signal.size(0), -1)
         s_f = self.signal_feature(signal)
 
         if random_s is not None:
-            random_s = [conv(random_s) for conv in self.convs]
+            # Apply same parallel convolutions to random segment
+            random_conv_outputs = []
+            for conv in self.convs:
+                random_conv_out = conv(random_s)
+                random_conv_outputs.append(random_conv_out)
 
-            random_s = torch.cat(random_s, dim=1)
-
-            random_s = random_s.view(-1, random_s.size(1))
-
+            random_s = torch.cat(random_conv_outputs, dim=1)
+            random_s = random_s.view(random_s.size(0), -1)
             random_s = self.signal_feature(random_s)
 
-            # torch.cat((s_f, labels_embedding).shape = [256, 192]
             return self.classifier(s_f), s_f, random_s
 
         return self.classifier(s_f)
