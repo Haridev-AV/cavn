@@ -42,6 +42,7 @@ python run_fl_simulation.py --mode hybrid
 ```
 
 **To run the Baseline CNN (Comparison):**
+
 ```powershell
 python run_fl_simulation.py --mode cnn
 ```
@@ -49,6 +50,7 @@ python run_fl_simulation.py --mode cnn
 ---
 
 ## Repository Structure
+
 ```
 models/hybrid/: Contains the HybridCAVN architecture.
 models/cnn/: Contains the baseline CNN architecture and VTaC data utilities.
@@ -61,18 +63,29 @@ run_centralized_hybrid.py: Benchmark script for non-federated training.
 ---
 
 ## Evaluation Metrics
-The system is evaluated using the VTaC Clinical Utility Score, which balances safety and alarm reduction:
 
-$$Score = 100 \times \frac{TP + TN}{TP + TN + FP + 5 \times FN}$$
+To ensure clinical relevance, the system is evaluated using the **VTaC Clinical Utility Score**, which penalizes missed life-threatening events five times more heavily than false alarms.
 
-* **TPR (Sensitivity):** Percentage of true emergencies caught.
-* **TNR (Specificity):** Percentage of false alarms suppressed.
-* **AUC-ROC:** Measures overall diagnostic potential across all thresholds.
+Beyond the aggregate score, the model's performance is analyzed via three specific clinical indicators:
+
+### 1. Alarm Burden Reduction (%)
+
+The percentage of false alarms successfully suppressed by the model. This corresponds to the **Specificity (True Negative Rate)**. A high value indicates a significant reduction in alert fatigue, ensuring clinicians are not overwhelmed by non-actionable warnings.
+
+### 2. Sensitivity on High-Priority VT Alarms
+
+The ability of the system to correctly identify true, life-threatening Ventricular Tachycardia events. This corresponds to the **Recall (True Positive Rate)**. Maintaining high sensitivity is critical for patient safety to ensure no genuine cardiac arrests are missed during validation.
+
+### 3. Time-to-Detection Impact
+
+The computational latency introduced by the inference process. This metric measures the average time (in milliseconds) required to process a 10-second window of vital signs. It ensures the model is computationally efficient enough for real-time deployment on bedside monitors without introducing dangerous delays to clinical intervention.
 
 ---
 
 ## Acknowledgments
+
 This project is built on top of the [VTaC repository](https://github.com/ML-Health/VTaC/tree/main) and extends its core methodologies with federated learning and hybrid architectures.
 
 **VTaC Citation:**
+
 > Li-wei Lehman, Benjamin Moody, Harsh Deep, Feng Wu, Hasan Saeed, Lucas McCullum, Diane Perry, Tristan Struja, Qiao Li, Gari Clifford, Roger Mark. *VTaC: A Benchmark Dataset of Ventricular Tachycardia Alarms from ICU Monitors.* Advances in Neural Information Processing Systems 36 (NeurIPS 2023), Datasets and Benchmarks Track. [DOI: 10.13026/z4f3-1f07](https://doi.org/10.13026/z4f3-1f07)
